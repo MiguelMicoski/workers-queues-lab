@@ -1,0 +1,49 @@
+spring:
+  application:
+    name: workers-queues-lab
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:orders_lab}
+    username: ${DB_USER:lab}
+    password: ${DB_PASSWORD:lab}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  sql:
+    init:
+      mode: never
+
+  cloud:
+    aws:
+      region:
+        static: us-east-1
+      credentials:
+        access-key: test
+        secret-key: test
+      sqs:
+        enabled: true
+      sns:
+        enabled: true
+      endpoint: ${AWS_ENDPOINT:http://localhost:4566}
+
+app:
+  sns:
+    order-events-topic: order-events
+  sqs:
+    order-processing-queue: order-processing
+    order-processing-dlq: order-processing-dlq
+  outbox:
+    publish-interval-ms: 2000
+    batch-size: 20
+  worker:
+    max-attempts-before-permanent: 3
+  external:
+    base-url: http://localhost:8080/mock-external
+
+logging:
+  level:
+    com.lab.workers: INFO
