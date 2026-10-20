@@ -1,1 +1,1 @@
-rootProject.name = "workers-queues-lab"
+rootProject.name = "order-sync"

@@ -39,4 +39,4 @@ awslocal sqs set-queue-attributes \
   --queue-url "$ENDPOINT/000000000000/order-processing" \
   --attributes "Policy={\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":\"*\",\"Action\":\"sqs:SendMessage\",\"Resource\":\"$QUEUE_ARN\",\"Condition\":{\"ArnEquals\":{\"aws:SourceArn\":\"$TOPIC_ARN\"}}}]}"
 
-echo "LocalStack SNS/SQS ready (topic + main queue + DLQ)."
+echo "SNS/SQS infrastructure ready."

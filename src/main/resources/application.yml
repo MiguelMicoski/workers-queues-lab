@@ -1,10 +1,10 @@
 spring:
   application:
-    name: workers-queues-lab
+    name: order-sync
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:orders_lab}
-    username: ${DB_USER:lab}
-    password: ${DB_PASSWORD:lab}
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:order_sync}
+    username: ${DB_USER:ordersync}
+    password: ${DB_PASSWORD:ordersync}
   jpa:
     hibernate:
       ddl-auto: validate
@@ -20,30 +20,28 @@ spring:
   cloud:
     aws:
       region:
-        static: us-east-1
+        static: ${AWS_REGION:us-east-1}
       credentials:
-        access-key: test
-        secret-key: test
+        access-key: ${AWS_ACCESS_KEY_ID:local}
+        secret-key: ${AWS_SECRET_ACCESS_KEY:local}
       sqs:
         enabled: true
       sns:
         enabled: true
-      endpoint: ${AWS_ENDPOINT:http://localhost:4566}
+      endpoint: ${AWS_ENDPOINT:}
 
 app:
   sns:
-    order-events-topic: order-events
+    order-events-topic: ${SNS_ORDER_EVENTS_TOPIC:order-events}
   sqs:
-    order-processing-queue: order-processing
-    order-processing-dlq: order-processing-dlq
+    order-processing-queue: ${SQS_ORDER_PROCESSING_QUEUE:order-processing}
+    order-processing-dlq: ${SQS_ORDER_PROCESSING_DLQ:order-processing-dlq}
   outbox:
-    publish-interval-ms: 2000
-    batch-size: 20
-  worker:
-    max-attempts-before-permanent: 3
-  external:
-    base-url: http://localhost:8080/mock-external
+    publish-interval-ms: ${OUTBOX_PUBLISH_INTERVAL_MS:2000}
+    batch-size: ${OUTBOX_BATCH_SIZE:20}
+  partner:
+    base-url: ${PARTNER_API_BASE_URL:http://localhost:8080/partner}
 
 logging:
   level:
-    com.lab.workers: INFO
+    com.micoski.ordersync: INFO

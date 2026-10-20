@@ -9,7 +9,7 @@ plugins {
     kotlin("plugin.jpa") version "2.1.20"
 }
 
-group = "com.lab.workers"
+group = "com.micoski.ordersync"
 version = "0.1.0-SNAPSHOT"
 
 java {

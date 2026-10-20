@@ -1,104 +1,80 @@
-# workers-queues-lab
+# order-sync
 
-Laboratório em **Kotlin + Spring Boot** com **SNS**, **SQS** (via LocalStack) e **PostgreSQL** para fixar:
+Kotlin service that accepts orders over HTTP and forwards them to a partner API asynchronously using **transactional outbox**, **Amazon SNS/SQS**, idempotent workers, retries, and a dead-letter queue.
 
-- processamento assíncrono
-- mensageria desacoplada
-- idempotência
-- retries + DLQ
-- transactional outbox
+Built as a reference implementation for reliable async integration patterns (LocalStack for local messaging, PostgreSQL for persistence).
 
-## Pré-requisitos
+## Stack
 
-- JDK 17+
-- Docker Desktop
+- Kotlin, Spring Boot 3
+- PostgreSQL, Flyway
+- AWS SNS + SQS (Spring Cloud AWS; LocalStack locally)
 
-## Subir infraestrutura
-
-```bash
-docker compose up -d
-```
-
-Aguarde Postgres e LocalStack saudáveis. O script `infra/localstack/init-aws.sh` cria:
-
-- tópico SNS `order-events`
-- fila `order-processing` (com redrive para DLQ após 3 recebimentos)
-- fila DLQ `order-processing-dlq`
-- subscription SNS → SQS (raw delivery)
-
-## Rodar a aplicação
-
-```bash
-./gradlew bootRun
-```
-
-Windows: `gradlew.bat bootRun`
-
-## Experimentos
-
-### Caminho feliz
-
-```bash
-curl -X POST http://localhost:8080/api/orders \
-  -H "Content-Type: application/json" \
-  -d "{\"customerEmail\":\"you@example.com\",\"productSku\":\"SKU-1\",\"quantity\":2}"
-```
-
-Resposta **202 Accepted** com status `RECEIVED`. Depois de alguns segundos:
-
-```bash
-curl http://localhost:8080/api/lab/orders
-```
-
-Status esperado: `SYNCED_EXTERNAL`.
-
-### Retries (falha transitória)
-
-```json
-"simulateExternalFailure": "transient"
-```
-
-O mock externo responde 503. O worker relança exceção → a mensagem volta à fila (visibility timeout). Após 3 tentativas, a mensagem vai para a **DLQ**; o `DlqWorker` registra em `dlq_records`.
-
-### Falha permanente (sem enfileirar retries úteis)
-
-```json
-"simulateExternalFailure": "permanent"
-```
-
-O worker marca o pedido como `FAILED` e **confirma** a mensagem (não faz sentido repetir 422).
-
-### Idempotência
-
-Republique manualmente a mesma mensagem na fila ou crie outbox duplicada: o worker ignora se `idempotency_key` já existir. O mock externo também deduplica via header `Idempotency-Key`.
-
-## Mapa do código
-
-| Pacote | Papel |
-|--------|--------|
-| `api/OrderController` | API síncrona — aceita pedido |
-| `service/OrderService` | Transação: pedido + outbox |
-| `outbox/OutboxPublisher` | Job: outbox → SNS |
-| `worker/OrderProcessingWorker` | Consome SQS, chama externo |
-| `worker/DlqWorker` | Trata DLQ |
-| `external/ExternalOrderClient` | Cliente HTTP com idempotency |
-| `api/MockExternalOrderController` | Parceiro simulado |
-
-## Fluxo (visão geral)
+## Architecture
 
 ```
 POST /api/orders
-  → DB: orders + outbox_events (mesma transação)
-  → 202 RECEIVED
+  → orders + outbox_events (single DB transaction)
+  → 202 Accepted
 
-OutboxPublisher (scheduled)
-  → SNS order-events
-  → SQS order-processing
+Outbox relay (scheduled)
+  → SNS topic order-events
+  → SQS queue order-processing
 
 OrderProcessingWorker
-  → idempotência local
-  → HTTP mock externo (Idempotency-Key)
-  → sucesso: SYNCED_EXTERNAL
-  → transitório: retry SQS
-  → esgotado: DLQ → DlqWorker
+  → idempotency check
+  → HTTP POST to partner (Idempotency-Key)
+  → order status SYNCED_EXTERNAL | FAILED
+
+After max receives on main queue
+  → order-processing-dlq → DlqWorker
 ```
+
+## Run locally
+
+Requirements: JDK 17+, Docker.
+
+```bash
+docker compose up -d
+./gradlew bootRun --args='--spring.profiles.active=local'
+```
+
+Windows:
+
+```powershell
+docker compose up -d
+.\gradlew.bat bootRun --args="--spring.profiles.active=local"
+```
+
+The `local` profile enables LocalStack endpoints and an in-process partner webhook at `/partner/orders` for end-to-end runs without an external system.
+
+## API
+
+**Create order**
+
+```http
+POST /api/orders
+Content-Type: application/json
+
+{
+  "customerEmail": "customer@example.com",
+  "productSku": "SKU-42",
+  "quantity": 1
+}
+```
+
+**Get order**
+
+```http
+GET /api/orders/{uuid}
+```
+
+## Configuration
+
+| Variable | Default (local) | Description |
+|----------|-----------------|-------------|
+| `PARTNER_API_BASE_URL` | `http://localhost:8080/partner` | Partner HTTP API base URL |
+| `AWS_ENDPOINT` | `http://localhost:4566` with profile `local` | SNS/SQS endpoint |
+| `DB_*` | see `application.yml` | PostgreSQL |
+
+In AWS, omit `AWS_ENDPOINT` and use real IAM credentials; point `PARTNER_API_BASE_URL` at your partner service.
